@@ -69,7 +69,7 @@ const App: React.FC = () => {
     if (!url.trim()) return;
 
     if (!validateUrl(url)) {
-      setError("Please enter a valid YouTube or social media link.");
+      setError("Please enter a valid media link.");
       setStatus(DownloadStatus.ERROR);
       return;
     }
@@ -141,7 +141,7 @@ const App: React.FC = () => {
               <input 
                 ref={inputRef}
                 type="text"
-                placeholder="Paste your YouTube Short link..."
+                placeholder="Paste your media link..."
                 className="w-full bg-slate-950/80 border border-slate-800 rounded-3xl pl-16 pr-14 py-6 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-slate-200 placeholder:text-slate-600 font-medium text-lg"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
@@ -166,7 +166,7 @@ const App: React.FC = () => {
                 {status === DownloadStatus.ANALYZING ? (
                   <RefreshCw className="w-6 h-6 animate-spin" />
                 ) : (
-                  <Download className="w-6 h-6 group-hover:translate-y-1 transition-transform" />
+                  <Download className="w-6 h-6 group-hover:translate-x-1 transition-transform" />
                 )}
                 <span>DOWNLOAD</span>
               </button>
@@ -178,7 +178,7 @@ const App: React.FC = () => {
           <div className="flex items-start gap-4 bg-red-500/10 border border-red-500/20 text-red-200 p-6 rounded-3xl animate-in fade-in zoom-in-95 duration-300">
             <AlertCircle className="w-6 h-6 flex-shrink-0 text-red-500 mt-1" />
             <div className="flex-1">
-              <p className="font-black text-lg mb-1 tracking-tight">Oops!</p>
+              <p className="font-black text-lg mb-1 tracking-tight">Media Lookup Failed</p>
               <p className="text-sm opacity-80 leading-relaxed font-medium">{error}</p>
             </div>
           </div>
@@ -192,7 +192,7 @@ const App: React.FC = () => {
                 <Layers className="w-8 h-8 text-blue-500 animate-pulse" />
               </div>
             </div>
-            <p className="text-blue-400 font-black tracking-[0.2em] text-xs uppercase animate-pulse">Locating Original Media...</p>
+            <p className="text-blue-400 font-black tracking-[0.2em] text-xs uppercase animate-pulse">Scanning Platform...</p>
           </div>
         )}
 
@@ -204,11 +204,10 @@ const App: React.FC = () => {
                   src={metadata.thumbnail} 
                   alt={metadata.title} 
                   onError={(e) => {
-                    // Try fallback to standard 0.jpg if hqdefault fails
                     const target = e.target as HTMLImageElement;
                     if (target.src.includes('hqdefault')) {
                       target.src = target.src.replace('hqdefault', '0');
-                    } else {
+                    } else if (!target.src.includes('unsplash')) {
                       target.src = 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?auto=format&fit=crop&w=800&q=80';
                     }
                   }}

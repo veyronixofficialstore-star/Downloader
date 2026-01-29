@@ -19,32 +19,26 @@ const getYouTubeId = (url: string): string | null => {
 
 /**
  * Analyzes the provided URL using Gemini 3 Flash with Google Search.
- * We prioritize getting the REAL title and creator.
+ * We prioritize getting the REAL title and creator directly from the web.
  */
 export const analyzeUrl = async (url: string): Promise<VideoMetadata> => {
-  const apiKey = process.env.API_KEY;
-  
-  if (!apiKey) {
-    throw new Error("API Key is missing in the environment configuration.");
-  }
-
-  const ai = new GoogleGenAI({ apiKey });
+  // Use the API key directly as per environment specifications
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const youtubeId = getYouTubeId(url);
   
   try {
-    // We use Google Search to find the ACTUAL metadata of the video.
-    // We explicitly tell the model NOT to guess or make things up.
+    // Using Google Search tool to fetch LIVE data from the platform.
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Perform a Google Search for this exact URL: ${url}.
-      Extract the REAL video title and the REAL channel/author name from the search results.
+      contents: `Search for this URL and extract the REAL title and channel/author name: ${url}. 
       
-      DO NOT GUESS. If you cannot find the exact title, return "Unknown Video".
-      
-      Format your response exactly like this:
+      CRITICAL INSTRUCTIONS:
+      1. Use Google Search to find the actual page content.
+      2. Do NOT invent a title. If you cannot find the exact title, return "Private or Unavailable Video".
+      3. Return ONLY the data in this exact format:
       TITLE: [Real Title]
       AUTHOR: [Real Channel Name]
-      DURATION: [Video Length if found, else 00:00]`,
+      DURATION: [Video length like 00:15 or 01:20]`,
       config: {
         tools: [{ googleSearch: {} }],
       }
@@ -52,26 +46,24 @@ export const analyzeUrl = async (url: string): Promise<VideoMetadata> => {
 
     const text = response.text;
     
-    // Parse the AI response
+    // Parse the AI response with fallback handling
     const titleMatch = text?.match(/TITLE:\s*(.*)/i);
     const authorMatch = text?.match(/AUTHOR:\s*(.*)/i);
     const durationMatch = text?.match(/DURATION:\s*(.*)/i);
 
-    const title = titleMatch?.[1]?.trim() || (youtubeId ? "YouTube Video" : "Social Media Media");
+    const title = titleMatch?.[1]?.trim() || (youtubeId ? "YouTube Video" : "Media Clip");
     const author = authorMatch?.[1]?.trim() || "Creator";
     const duration = durationMatch?.[1]?.trim() || "0:15";
 
-    // Determine platform
+    // Determine platform for UI context
     let platform: any = "unknown";
     if (url.includes('youtube.com') || url.includes('youtu.be')) platform = 'youtube';
     else if (url.includes('tiktok.com')) platform = 'tiktok';
     else if (url.includes('instagram.com')) platform = 'instagram';
 
-    // Thumbnail logic: YouTube Shorts often don't have maxresdefault.
-    // We'll use hqdefault as a safe high-quality base.
+    // Thumbnail logic: YouTube Shorts use hqdefault for guaranteed availability.
     let thumbnail = `https://images.unsplash.com/photo-1611162617474-5b21e879e113?auto=format&fit=crop&w=800&q=80`;
     if (youtubeId) {
-      // Use hqdefault which is more reliable than maxresdefault for Shorts
       thumbnail = `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg`;
     }
 
@@ -85,7 +77,7 @@ export const analyzeUrl = async (url: string): Promise<VideoMetadata> => {
   } catch (error: any) {
     console.error("Gemini Analysis Error:", error);
     
-    // Fallback if AI fails: At least provide the YouTube thumbnail if we have an ID
+    // Automatic fallback for YouTube links if search fails but we have an ID
     if (youtubeId) {
       return {
         title: "YouTube Video",
@@ -96,6 +88,6 @@ export const analyzeUrl = async (url: string): Promise<VideoMetadata> => {
       };
     }
     
-    throw new Error("Could not find video details. Please check if the link is public.");
+    throw new Error("Unable to fetch video details. Please ensure the link is public and valid.");
   }
 };
