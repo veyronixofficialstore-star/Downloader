@@ -1,66 +1,101 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { VideoMetadata } from "../types";
 
 /**
- * Uses Gemini 3 Flash to extract structured metadata from a social media URL.
- * Flash is preferred here for speed and strict adherence to JSON schemas.
+ * Robustly extracts a YouTube Video ID from various URL formats, including Shorts.
+ */
+const getYouTubeId = (url: string): string | null => {
+  const patterns = [
+    /(?:v=|\/)([0-9A-Za-z_-]{11}).*/,
+    /(?:embed\/|v\/|shorts\/|watch\?v=|youtu\.be\/)([0-9A-Za-z_-]{11})/
+  ];
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match && match[1]) return match[1];
+  }
+  return null;
+};
+
+/**
+ * Analyzes the provided URL using Gemini 3 Flash with Google Search.
+ * We prioritize getting the REAL title and creator.
  */
 export const analyzeUrl = async (url: string): Promise<VideoMetadata> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const apiKey = process.env.API_KEY;
+  
+  if (!apiKey) {
+    throw new Error("API Key is missing in the environment configuration.");
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
+  const youtubeId = getYouTubeId(url);
   
   try {
+    // We use Google Search to find the ACTUAL metadata of the video.
+    // We explicitly tell the model NOT to guess or make things up.
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Extract video metadata from this URL: ${url}. 
-      Identify if it's YouTube, TikTok, or Instagram. 
-      Create a title, identify the author, and estimate duration.`,
+      contents: `Perform a Google Search for this exact URL: ${url}.
+      Extract the REAL video title and the REAL channel/author name from the search results.
+      
+      DO NOT GUESS. If you cannot find the exact title, return "Unknown Video".
+      
+      Format your response exactly like this:
+      TITLE: [Real Title]
+      AUTHOR: [Real Channel Name]
+      DURATION: [Video Length if found, else 00:00]`,
       config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            title: { type: Type.STRING },
-            author: { type: Type.STRING },
-            duration: { type: Type.STRING },
-            platform: { 
-              type: Type.STRING, 
-              enum: ["youtube", "tiktok", "instagram", "unknown"] 
-            }
-          },
-          required: ["title", "author", "duration", "platform"]
-        }
+        tools: [{ googleSearch: {} }],
       }
     });
 
     const text = response.text;
-    if (!text) {
-      throw new Error("The AI returned an empty response. This usually happens with invalid URLs.");
-    }
+    
+    // Parse the AI response
+    const titleMatch = text?.match(/TITLE:\s*(.*)/i);
+    const authorMatch = text?.match(/AUTHOR:\s*(.*)/i);
+    const durationMatch = text?.match(/DURATION:\s*(.*)/i);
 
-    // Clean the text in case the model ignored responseMimeType and added markdown
-    const cleanedText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-    const data = JSON.parse(cleanedText);
+    const title = titleMatch?.[1]?.trim() || (youtubeId ? "YouTube Video" : "Social Media Media");
+    const author = authorMatch?.[1]?.trim() || "Creator";
+    const duration = durationMatch?.[1]?.trim() || "0:15";
+
+    // Determine platform
+    let platform: any = "unknown";
+    if (url.includes('youtube.com') || url.includes('youtu.be')) platform = 'youtube';
+    else if (url.includes('tiktok.com')) platform = 'tiktok';
+    else if (url.includes('instagram.com')) platform = 'instagram';
+
+    // Thumbnail logic: YouTube Shorts often don't have maxresdefault.
+    // We'll use hqdefault as a safe high-quality base.
+    let thumbnail = `https://images.unsplash.com/photo-1611162617474-5b21e879e113?auto=format&fit=crop&w=800&q=80`;
+    if (youtubeId) {
+      // Use hqdefault which is more reliable than maxresdefault for Shorts
+      thumbnail = `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg`;
+    }
 
     return {
-      title: data.title || "Untitled Video",
-      author: data.author || "Unknown Creator",
-      duration: data.duration || "00:00",
-      platform: data.platform || "unknown",
-      thumbnail: `https://images.unsplash.com/photo-1611162617474-5b21e879e113?auto=format&fit=crop&w=800&q=80`
+      title,
+      author,
+      duration,
+      platform,
+      thumbnail
     };
   } catch (error: any) {
-    console.error("Gemini Analysis Error Details:", error);
+    console.error("Gemini Analysis Error:", error);
     
-    // Provide user-friendly versions of common API errors
-    if (error.message?.includes("403")) {
-      throw new Error("API Key Error: Access forbidden. Please check if your API Key is valid and has billing enabled if required.");
-    } else if (error.message?.includes("429")) {
-      throw new Error("Rate Limit Reached: Too many requests. Please wait a moment and try again.");
-    } else if (error.message?.includes("404")) {
-      throw new Error("Model not found. The Gemini service might be temporarily unavailable.");
+    // Fallback if AI fails: At least provide the YouTube thumbnail if we have an ID
+    if (youtubeId) {
+      return {
+        title: "YouTube Video",
+        author: "Creator",
+        duration: "--:--",
+        platform: "youtube",
+        thumbnail: `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg`
+      };
     }
     
-    throw new Error(error.message || "Failed to analyze link. Please ensure it's a valid YouTube, TikTok, or Instagram URL.");
+    throw new Error("Could not find video details. Please check if the link is public.");
   }
 };
