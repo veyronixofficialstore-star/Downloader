@@ -19,7 +19,9 @@ export interface AnalysisResult extends VideoMetadata {
  */
 const fetchYoutubeOEmbed = async (url: string) => {
   try {
-    const response = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`);
+    // Standardize URL for oEmbed
+    const cleanUrl = url.split('&')[0];
+    const response = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(cleanUrl)}&format=json`);
     if (response.ok) {
       return await response.json();
     }
@@ -66,7 +68,7 @@ export const analyzeUrl = async (url: string): Promise<AnalysisResult> => {
         messages: [
           {
             role: "system",
-            content: "You are a media parser. Given a URL, extract the likely title and creator name from the URL string. Return format: TITLE: [name], AUTHOR: [name]."
+            content: "You are a media parser. Extract the title and creator name from the URL string. Return format: TITLE: [name], AUTHOR: [name]."
           },
           {
             role: "user",
@@ -96,11 +98,11 @@ export const analyzeUrl = async (url: string): Promise<AnalysisResult> => {
   } catch (error: any) {
     // Ultimate fallback if APIs fail
     return {
-      title: youtubeId ? "YouTube Shorts" : "Video Content",
-      author: "Creator",
+      title: youtubeId ? "YouTube Shorts Content" : "Media Clip",
+      author: "Original Creator",
       duration: "--:--",
       platform: "unknown",
-      thumbnail: youtubeId ? `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg` : "",
+      thumbnail: youtubeId ? `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg` : "https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=800",
       isVerified: false
     };
   }
