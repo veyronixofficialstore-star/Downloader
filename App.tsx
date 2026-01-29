@@ -12,7 +12,8 @@ import {
   AlertCircle,
   RefreshCw,
   Zap,
-  Check
+  Check,
+  X
 } from 'lucide-react';
 import { analyzeUrl } from './services/geminiService';
 import { VideoMetadata, DownloadStatus, DownloadOption } from './types';
@@ -36,22 +37,34 @@ const App: React.FC = () => {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handlePaste = async () => {
-    // Focus the input first to trigger native mobile behavior (keyboard/paste bar)
     if (inputRef.current) {
       inputRef.current.focus();
     }
 
     try {
-      // Attempt to read directly from clipboard for one-tap convenience
       const text = await navigator.clipboard.readText();
       if (text) {
         setUrl(text);
         setError(null);
+        // Reset analysis state when a new link is pasted
+        if (status !== DownloadStatus.IDLE) {
+            setStatus(DownloadStatus.IDLE);
+            setMetadata(null);
+        }
       }
     } catch (err) {
       console.warn('Direct clipboard access denied, focusing input for manual paste.');
-      // If direct access fails, the focus() call above ensures the 
-      // "phones original paste" (native tooltip/keyboard bar) is visible.
+    }
+  };
+
+  const handleClear = () => {
+    setUrl('');
+    setError(null);
+    setMetadata(null);
+    setStatus(DownloadStatus.IDLE);
+    setProgress(0);
+    if (inputRef.current) {
+      inputRef.current.focus();
     }
   };
 
@@ -68,7 +81,7 @@ const App: React.FC = () => {
       setMetadata(data);
       setStatus(DownloadStatus.READY);
     } catch (err) {
-      setError('Could not analyze link. Please check the URL and try again.');
+      setError(err instanceof Error ? err.message : 'Could not analyze link. Please check the URL and try again.');
       setStatus(DownloadStatus.ERROR);
     }
   };
@@ -119,9 +132,9 @@ const App: React.FC = () => {
       </header>
 
       <main className="w-full max-w-2xl space-y-8">
-        <section className="bg-slate-900 border border-slate-800 p-1.5 rounded-3xl shadow-2xl">
-          <div className="flex flex-col md:flex-row gap-2">
-            <div className="relative flex-1 group">
+        <section className="bg-slate-900 border border-slate-800 p-1.5 rounded-3xl shadow-2xl transition-all duration-300">
+          <div className="flex flex-col gap-2">
+            <div className="relative group flex-1">
               <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
                 <LinkIcon className="w-5 h-5 text-slate-500 group-focus-within:text-blue-500 transition-colors" />
               </div>
@@ -129,24 +142,44 @@ const App: React.FC = () => {
                 ref={inputRef}
                 type="text"
                 placeholder="Paste link here..."
-                className="w-full bg-slate-950 border-none rounded-2xl pl-12 pr-4 py-4 focus:ring-2 focus:ring-blue-500 transition-all text-slate-200"
+                className="w-full bg-slate-950 border-none rounded-2xl pl-12 pr-12 py-4 focus:ring-2 focus:ring-blue-500 transition-all text-slate-200"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
               />
+              {url && (
+                <button 
+                  onClick={handleClear}
+                  className="absolute inset-y-0 right-4 flex items-center text-slate-500 hover:text-white transition-colors"
+                  aria-label="Clear input"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              )}
             </div>
-            <div className="flex gap-2 p-1 md:p-0">
+            
+            <div className="flex flex-wrap gap-2 p-1 md:p-0">
               <button 
                 onClick={handlePaste}
-                className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 px-6 py-4 rounded-2xl font-semibold active:scale-95 transition-all"
+                className="flex-1 min-w-[100px] flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-3.5 rounded-2xl font-semibold active:scale-95 transition-all"
                 title="Paste from clipboard"
               >
                 <Clipboard className="w-5 h-5" />
                 <span>Paste</span>
               </button>
+
+              <button 
+                onClick={handleClear}
+                className="flex-1 min-w-[100px] flex items-center justify-center gap-2 bg-slate-800 hover:bg-red-500/20 hover:text-red-400 text-slate-200 px-4 py-3.5 rounded-2xl font-semibold active:scale-95 transition-all"
+                title="Clear all"
+              >
+                <X className="w-5 h-5" />
+                <span>Clear</span>
+              </button>
+
               <button 
                 onClick={handleAnalyze}
                 disabled={status === DownloadStatus.ANALYZING || !url}
-                className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:hover:bg-blue-600 text-white px-8 py-4 rounded-2xl font-bold shadow-lg shadow-blue-500/30 transition-all"
+                className="flex-[2] min-w-[150px] flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:hover:bg-blue-600 text-white px-6 py-3.5 rounded-2xl font-bold shadow-lg shadow-blue-500/30 transition-all active:scale-95"
               >
                 {status === DownloadStatus.ANALYZING ? (
                   <RefreshCw className="w-5 h-5 animate-spin" />
@@ -163,21 +196,21 @@ const App: React.FC = () => {
           <div className="flex justify-center items-center gap-8 py-4 grayscale opacity-30 hover:grayscale-0 hover:opacity-100 transition-all duration-500">
             <div className="flex flex-col items-center gap-2">
               <Youtube className="w-8 h-8 text-red-500" />
-              <span className="text-xs font-medium">YouTube</span>
+              <span className="text-xs font-medium uppercase tracking-widest opacity-70">Shorts</span>
             </div>
             <div className="flex flex-col items-center gap-2">
               <Instagram className="w-8 h-8 text-pink-500" />
-              <span className="text-xs font-medium">Instagram</span>
+              <span className="text-xs font-medium uppercase tracking-widest opacity-70">Reels</span>
             </div>
             <div className="flex flex-col items-center gap-2">
               <Video className="w-8 h-8 text-cyan-400" />
-              <span className="text-xs font-medium">TikTok</span>
+              <span className="text-xs font-medium uppercase tracking-widest opacity-70">TikTok</span>
             </div>
           </div>
         )}
 
         {error && (
-          <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-2xl animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-2xl animate-in fade-in slide-in-from-top-2 duration-300 shadow-lg">
             <AlertCircle className="w-5 h-5 flex-shrink-0" />
             <p className="text-sm font-medium">{error}</p>
           </div>
@@ -191,13 +224,13 @@ const App: React.FC = () => {
                 <RefreshCw className="w-8 h-8 text-blue-500" />
               </div>
             </div>
-            <p className="text-blue-400 font-medium tracking-wide">Analyzing media metadata...</p>
+            <p className="text-blue-400 font-medium tracking-wide">Analyzing your media...</p>
           </div>
         )}
 
         {metadata && (status === DownloadStatus.READY || status === DownloadStatus.DOWNLOADING || status === DownloadStatus.COMPLETED) && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden flex flex-col md:flex-row shadow-xl">
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden flex flex-col md:flex-row shadow-xl ring-1 ring-white/5">
               <div className="w-full md:w-56 h-40 md:h-auto overflow-hidden">
                 <img 
                   src={metadata.thumbnail} 
@@ -212,20 +245,20 @@ const App: React.FC = () => {
                     {metadata.platform === 'instagram' && <Instagram className="w-4 h-4 text-pink-500" />}
                     {metadata.platform === 'tiktok' && <Video className="w-4 h-4 text-cyan-400" />}
                     <span className="text-xs font-bold uppercase tracking-widest text-slate-500">
-                      {metadata.platform} Video
+                      {metadata.platform} Media Found
                     </span>
                   </div>
-                  <h2 className="text-xl font-bold text-white mb-1 line-clamp-2">
+                  <h2 className="text-xl font-bold text-white mb-1 line-clamp-2 leading-snug">
                     {metadata.title}
                   </h2>
                   <p className="text-slate-400 text-sm font-medium">@{metadata.author}</p>
                 </div>
                 <div className="flex items-center gap-4 mt-4">
                   <div className="px-3 py-1 bg-slate-800 rounded-lg text-xs font-mono text-slate-300">
-                    Duration: {metadata.duration}
+                    {metadata.duration}
                   </div>
-                  <button onClick={reset} className="text-xs font-medium text-slate-500 hover:text-blue-400 transition-colors">
-                    Try another link
+                  <button onClick={reset} className="text-xs font-medium text-slate-500 hover:text-blue-400 transition-colors underline underline-offset-4">
+                    Change link
                   </button>
                 </div>
               </div>
@@ -243,7 +276,7 @@ const App: React.FC = () => {
                   `}
                 >
                   <div className="flex items-center gap-4">
-                    <div className={`p-2 rounded-xl ${option.format === 'MP4' ? 'bg-indigo-500/10 text-indigo-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
+                    <div className={`p-2 rounded-xl transition-colors ${option.format === 'MP4' ? 'bg-indigo-500/10 text-indigo-400 group-hover:bg-indigo-500/20' : 'bg-emerald-500/10 text-emerald-400 group-hover:bg-emerald-500/20'}`}>
                       {option.format === 'MP4' ? <Video className="w-5 h-5" /> : <Music className="w-5 h-5" />}
                     </div>
                     <div>
@@ -266,7 +299,7 @@ const App: React.FC = () => {
                     <button 
                       onClick={() => startDownload(option)}
                       disabled={status === DownloadStatus.DOWNLOADING}
-                      className="bg-slate-800 group-hover:bg-blue-600 text-slate-400 group-hover:text-white p-2.5 rounded-xl transition-all"
+                      className="bg-slate-800 group-hover:bg-blue-600 text-slate-400 group-hover:text-white p-2.5 rounded-xl transition-all shadow-sm active:scale-90 disabled:opacity-30"
                     >
                       {status === DownloadStatus.COMPLETED && activeDownloadId === option.id ? (
                         <Check className="w-5 h-5 animate-in zoom-in" />
@@ -282,15 +315,16 @@ const App: React.FC = () => {
         )}
 
         {status === DownloadStatus.COMPLETED && (
-          <div className="fixed bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-emerald-500 text-white px-6 py-3 rounded-2xl shadow-2xl shadow-emerald-500/20 animate-in fade-in slide-in-from-bottom-8 duration-500 z-50">
+          <div className="fixed bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-emerald-500 text-white px-6 py-3 rounded-2xl shadow-2xl shadow-emerald-500/40 animate-in fade-in slide-in-from-bottom-8 duration-500 z-50">
             <CheckCircle className="w-5 h-5" />
-            <span className="font-bold">Download Completed Successfully!</span>
+            <span className="font-bold">Download Completed!</span>
           </div>
         )}
       </main>
 
-      <footer className="mt-auto py-8 text-slate-600 text-sm font-medium text-center">
-        <p>© 2024 AnyStream • Paste your link and we'll handle the rest</p>
+      <footer className="mt-auto py-8 text-slate-600 text-sm font-medium text-center space-y-2">
+        <p>© 2024 AnyStream • Rapid Media Downloader</p>
+        <p className="text-slate-700 text-[10px] uppercase tracking-widest font-bold">Fast • Reliable • Multi-Platform</p>
       </footer>
     </div>
   );
