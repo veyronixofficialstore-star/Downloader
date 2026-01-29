@@ -1,5 +1,5 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Download, 
   Clipboard, 
@@ -11,65 +11,76 @@ import {
   RefreshCw,
   Zap,
   X,
-  Layers
+  Layers,
+  Key,
+  ExternalLink
 } from 'lucide-react';
-import { analyzeUrl } from './services/geminiService';
-import { VideoMetadata, DownloadStatus, DownloadOption } from './types';
+import { analyzeUrl, AnalysisResult } from './services/geminiService';
+import { DownloadStatus, DownloadOption } from './types';
 
 const MOCK_OPTIONS: DownloadOption[] = [
   { id: '1080', format: 'MP4', quality: '1080p Full HD', size: '42.5 MB' },
   { id: '720', format: 'MP4', quality: '720p HD', size: '24.1 MB' },
   { id: '480', format: 'MP4', quality: '480p SD', size: '12.8 MB' },
   { id: '360', format: 'MP4', quality: '360p', size: '8.4 MB' },
-  { id: '240', format: 'MP4', quality: '240p', size: '4.2 MB' },
-  { id: '144', format: 'MP4', quality: '144p', size: '2.1 MB' },
   { id: 'mp3-hi', format: 'MP3', quality: '320kbps Audio', size: '4.2 MB' },
   { id: 'mp3-std', format: 'MP3', quality: '128kbps Audio', size: '1.8 MB' },
 ];
 
 const App: React.FC = () => {
+  const [hasKey, setHasKey] = useState<boolean | null>(null);
   const [url, setUrl] = useState('');
   const [status, setStatus] = useState<DownloadStatus>(DownloadStatus.IDLE);
-  const [metadata, setMetadata] = useState<VideoMetadata | null>(null);
+  const [metadata, setMetadata] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [activeDownloadId, setActiveDownloadId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const checkKey = async () => {
+      if (window.aistudio?.hasSelectedApiKey) {
+        const selected = await window.aistudio.hasSelectedApiKey();
+        setHasKey(selected);
+      } else {
+        setHasKey(true);
+      }
+    };
+    checkKey();
+  }, []);
+
+  const handleOpenKeySelector = async () => {
+    if (window.aistudio?.openSelectKey) {
+      await window.aistudio.openSelectKey();
+      setHasKey(true); 
+    }
+  };
+
+  const handlePaste = async () => {
+    try {
+      setError(null);
+      const text = await navigator.clipboard.readText();
+      if (text) {
+        setUrl(text.trim());
+        setMetadata(null);
+        setStatus(DownloadStatus.IDLE);
+      }
+    } catch (err: any) {
+      console.warn("Clipboard access denied", err);
+      setError("Clipboard access blocked. Please use Ctrl+V to paste manually.");
+      if (inputRef.current) inputRef.current.focus();
+    }
+  };
 
   const validateUrl = (testUrl: string) => {
     const socialPatterns = [/youtube\.com/, /youtu\.be/, /tiktok\.com/, /instagram\.com/];
     return socialPatterns.some(pattern => pattern.test(testUrl.toLowerCase()));
   };
 
-  const handlePaste = async () => {
-    try {
-      const text = await navigator.clipboard.readText();
-      if (text) {
-        setUrl(text.trim());
-        setError(null);
-        setMetadata(null);
-        setStatus(DownloadStatus.IDLE);
-      }
-    } catch (err) {
-      if (inputRef.current) inputRef.current.focus();
-    }
-  };
-
-  const handleClear = () => {
-    setUrl('');
-    setError(null);
-    setMetadata(null);
-    setStatus(DownloadStatus.IDLE);
-    setProgress(0);
-    setActiveDownloadId(null);
-    if (inputRef.current) inputRef.current.focus();
-  };
-
   const handleAnalyze = async () => {
     if (!url.trim()) return;
-
     if (!validateUrl(url)) {
-      setError("Please enter a valid media link.");
+      setError("Please enter a valid YouTube, TikTok, or Instagram link.");
       setStatus(DownloadStatus.ERROR);
       return;
     }
@@ -84,7 +95,7 @@ const App: React.FC = () => {
       setStatus(DownloadStatus.READY);
     } catch (err: any) {
       console.error(err);
-      setError(err.message || 'An unexpected error occurred while processing the link.');
+      setError(err.message || 'Analysis failed. Check if the video is public.');
       setStatus(DownloadStatus.ERROR);
     }
   };
@@ -96,7 +107,7 @@ const App: React.FC = () => {
 
     let currentProgress = 0;
     const interval = setInterval(() => {
-      currentProgress += Math.random() * 18;
+      currentProgress += Math.random() * 20;
       if (currentProgress >= 100) {
         currentProgress = 100;
         clearInterval(interval);
@@ -109,6 +120,31 @@ const App: React.FC = () => {
       setProgress(Math.floor(currentProgress));
     }, 150);
   };
+
+  if (hasKey === false) {
+    return (
+      <div className="min-h-screen bg-[#020617] text-slate-100 flex flex-col items-center justify-center p-6 text-center">
+        <div className="max-w-md w-full space-y-8 bg-slate-900/50 p-10 rounded-[2.5rem] border border-white/5 backdrop-blur-3xl shadow-2xl">
+          <div className="w-20 h-20 bg-blue-600/20 rounded-3xl flex items-center justify-center mx-auto mb-6">
+            <Key className="w-10 h-10 text-blue-400" />
+          </div>
+          <h2 className="text-3xl font-black tracking-tight">Configuration Required</h2>
+          <p className="text-slate-400 leading-relaxed font-medium">
+            To enable high-speed analysis, please select your API key.
+          </p>
+          <div className="space-y-4">
+            <button 
+              onClick={handleOpenKeySelector}
+              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-5 rounded-2xl shadow-xl shadow-blue-600/20 transition-all active:scale-95 flex items-center justify-center gap-3"
+            >
+              <Zap className="w-5 h-5 fill-current" />
+              CONFIGURE API KEY
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#020617] text-slate-100 flex flex-col items-center p-4 md:p-8 selection:bg-blue-500/30">
@@ -127,7 +163,7 @@ const App: React.FC = () => {
           </h1>
         </div>
         <p className="text-slate-400 font-medium tracking-tight">
-          High-performance media extraction and conversion.
+          Universal media extraction • Instant Analysis
         </p>
       </header>
 
@@ -141,21 +177,24 @@ const App: React.FC = () => {
               <input 
                 ref={inputRef}
                 type="text"
-                placeholder="Paste your media link..."
+                placeholder="Paste media link here..."
                 className="w-full bg-slate-950/80 border border-slate-800 rounded-3xl pl-16 pr-14 py-6 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-slate-200 placeholder:text-slate-600 font-medium text-lg"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleAnalyze()}
               />
               {url && (
-                <button onClick={handleClear} className="absolute inset-y-0 right-6 flex items-center text-slate-500 hover:text-white transition-colors">
+                <button onClick={() => setUrl('')} className="absolute inset-y-0 right-6 flex items-center text-slate-500 hover:text-white transition-colors">
                   <X className="w-6 h-6" />
                 </button>
               )}
             </div>
             
             <div className="flex flex-wrap gap-4 px-2 pb-2">
-              <button onClick={handlePaste} className="flex-1 flex items-center justify-center gap-3 bg-slate-800 hover:bg-slate-700 text-slate-200 px-6 py-4 rounded-2xl font-bold transition-all border border-slate-700/50 active:scale-95">
+              <button 
+                onClick={handlePaste} 
+                className="flex-1 flex items-center justify-center gap-3 bg-slate-800 hover:bg-slate-700 text-slate-200 px-6 py-4 rounded-2xl font-bold transition-all border border-slate-700/50 active:scale-95"
+              >
                 <Clipboard className="w-5 h-5" /> <span>Paste</span>
               </button>
               <button 
@@ -166,9 +205,9 @@ const App: React.FC = () => {
                 {status === DownloadStatus.ANALYZING ? (
                   <RefreshCw className="w-6 h-6 animate-spin" />
                 ) : (
-                  <Download className="w-6 h-6 group-hover:translate-x-1 transition-transform" />
+                  <Download className="w-6 h-6 group-hover:translate-y-1 transition-transform" />
                 )}
-                <span>DOWNLOAD</span>
+                <span>ANALYZE</span>
               </button>
             </div>
           </div>
@@ -178,7 +217,7 @@ const App: React.FC = () => {
           <div className="flex items-start gap-4 bg-red-500/10 border border-red-500/20 text-red-200 p-6 rounded-3xl animate-in fade-in zoom-in-95 duration-300">
             <AlertCircle className="w-6 h-6 flex-shrink-0 text-red-500 mt-1" />
             <div className="flex-1">
-              <p className="font-black text-lg mb-1 tracking-tight">Media Lookup Failed</p>
+              <p className="font-black text-lg mb-1 tracking-tight">Process Info</p>
               <p className="text-sm opacity-80 leading-relaxed font-medium">{error}</p>
             </div>
           </div>
@@ -192,7 +231,7 @@ const App: React.FC = () => {
                 <Layers className="w-8 h-8 text-blue-500 animate-pulse" />
               </div>
             </div>
-            <p className="text-blue-400 font-black tracking-[0.2em] text-xs uppercase animate-pulse">Scanning Platform...</p>
+            <p className="text-blue-400 font-black tracking-[0.2em] text-xs uppercase animate-pulse">Running Fast Search...</p>
           </div>
         )}
 
@@ -203,15 +242,11 @@ const App: React.FC = () => {
                 <img 
                   src={metadata.thumbnail} 
                   alt={metadata.title} 
+                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" 
                   onError={(e) => {
                     const target = e.target as HTMLImageElement;
-                    if (target.src.includes('hqdefault')) {
-                      target.src = target.src.replace('hqdefault', '0');
-                    } else if (!target.src.includes('unsplash')) {
-                      target.src = 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?auto=format&fit=crop&w=800&q=80';
-                    }
+                    if (target.src.includes('hqdefault')) target.src = target.src.replace('hqdefault', '0');
                   }}
-                  className="w-full h-full object-cover opacity-100 group-hover:scale-105 transition-transform duration-700" 
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 to-transparent opacity-60"></div>
               </div>
@@ -220,10 +255,30 @@ const App: React.FC = () => {
                   <div className="flex items-center gap-3 mb-3">
                     <span className="px-3 py-1 bg-slate-800 text-slate-400 rounded-full text-[10px] font-black uppercase tracking-widest">{metadata.duration}</span>
                   </div>
-                  <h2 className="text-2xl font-black text-white leading-tight mb-2 tracking-tight group-hover:text-blue-400 transition-colors line-clamp-3">
+                  <h2 className="text-2xl font-black text-white leading-tight mb-2 tracking-tight group-hover:text-blue-400 transition-colors line-clamp-2">
                     {metadata.title}
                   </h2>
-                  <p className="text-blue-400/80 text-lg font-bold">by @{metadata.author}</p>
+                  <p className="text-blue-400/80 text-lg font-bold">by {metadata.author}</p>
+                  
+                  {metadata.sources && metadata.sources.length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-white/5 space-y-2">
+                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Search Grounds:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {metadata.sources.map((source, i) => (
+                          <a 
+                            key={i} 
+                            href={source.uri} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-[10px] bg-slate-800/50 hover:bg-slate-800 px-3 py-1.5 rounded-lg text-slate-400 flex items-center gap-2 transition-colors border border-white/5"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                            <span className="max-w-[120px] truncate">{source.title}</span>
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -282,7 +337,7 @@ const App: React.FC = () => {
 
       <footer className="mt-auto py-12 text-center opacity-30 w-full max-w-2xl border-t border-white/5">
         <p className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-500 mb-2">AnyStream Systems Inc.</p>
-        <p className="text-[9px] font-bold text-slate-600 px-10">All media rights belong to original creators. Use responsibly.</p>
+        <p className="text-[9px] font-bold text-slate-600 px-10">All media rights belong to original creators.</p>
       </footer>
     </div>
   );
