@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   Download, 
   Clipboard, 
@@ -12,7 +12,6 @@ import {
   Zap,
   X,
   Layers,
-  Key,
   ExternalLink
 } from 'lucide-react';
 import { analyzeUrl, AnalysisResult } from './services/geminiService';
@@ -28,7 +27,6 @@ const MOCK_OPTIONS: DownloadOption[] = [
 ];
 
 const App: React.FC = () => {
-  const [hasKey, setHasKey] = useState<boolean | null>(null);
   const [url, setUrl] = useState('');
   const [status, setStatus] = useState<DownloadStatus>(DownloadStatus.IDLE);
   const [metadata, setMetadata] = useState<AnalysisResult | null>(null);
@@ -36,25 +34,6 @@ const App: React.FC = () => {
   const [progress, setProgress] = useState(0);
   const [activeDownloadId, setActiveDownloadId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const checkKey = async () => {
-      if (window.aistudio?.hasSelectedApiKey) {
-        const selected = await window.aistudio.hasSelectedApiKey();
-        setHasKey(selected);
-      } else {
-        setHasKey(true);
-      }
-    };
-    checkKey();
-  }, []);
-
-  const handleOpenKeySelector = async () => {
-    if (window.aistudio?.openSelectKey) {
-      await window.aistudio.openSelectKey();
-      setHasKey(true); 
-    }
-  };
 
   const handlePaste = async () => {
     try {
@@ -66,8 +45,7 @@ const App: React.FC = () => {
         setStatus(DownloadStatus.IDLE);
       }
     } catch (err: any) {
-      console.warn("Clipboard access denied", err);
-      setError("Clipboard access blocked. Please use Ctrl+V to paste manually.");
+      setError("Please paste the link manually (Ctrl+V).");
       if (inputRef.current) inputRef.current.focus();
     }
   };
@@ -77,7 +55,7 @@ const App: React.FC = () => {
     return socialPatterns.some(pattern => pattern.test(testUrl.toLowerCase()));
   };
 
-  const handleAnalyze = async () => {
+  const handleProcess = async () => {
     if (!url.trim()) return;
     if (!validateUrl(url)) {
       setError("Please enter a valid YouTube, TikTok, or Instagram link.");
@@ -95,7 +73,7 @@ const App: React.FC = () => {
       setStatus(DownloadStatus.READY);
     } catch (err: any) {
       console.error(err);
-      setError(err.message || 'Analysis failed. Check if the video is public.');
+      setError(err.message || 'Media processing failed. Check your internet connection.');
       setStatus(DownloadStatus.ERROR);
     }
   };
@@ -107,7 +85,7 @@ const App: React.FC = () => {
 
     let currentProgress = 0;
     const interval = setInterval(() => {
-      currentProgress += Math.random() * 20;
+      currentProgress += Math.random() * 30;
       if (currentProgress >= 100) {
         currentProgress = 100;
         clearInterval(interval);
@@ -118,36 +96,11 @@ const App: React.FC = () => {
         }, 2000);
       }
       setProgress(Math.floor(currentProgress));
-    }, 150);
+    }, 100);
   };
 
-  if (hasKey === false) {
-    return (
-      <div className="min-h-screen bg-[#020617] text-slate-100 flex flex-col items-center justify-center p-6 text-center">
-        <div className="max-w-md w-full space-y-8 bg-slate-900/50 p-10 rounded-[2.5rem] border border-white/5 backdrop-blur-3xl shadow-2xl">
-          <div className="w-20 h-20 bg-blue-600/20 rounded-3xl flex items-center justify-center mx-auto mb-6">
-            <Key className="w-10 h-10 text-blue-400" />
-          </div>
-          <h2 className="text-3xl font-black tracking-tight">Configuration Required</h2>
-          <p className="text-slate-400 leading-relaxed font-medium">
-            To enable high-speed analysis, please select your API key.
-          </p>
-          <div className="space-y-4">
-            <button 
-              onClick={handleOpenKeySelector}
-              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-5 rounded-2xl shadow-xl shadow-blue-600/20 transition-all active:scale-95 flex items-center justify-center gap-3"
-            >
-              <Zap className="w-5 h-5 fill-current" />
-              CONFIGURE API KEY
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-[#020617] text-slate-100 flex flex-col items-center p-4 md:p-8 selection:bg-blue-500/30">
+    <div className="min-h-screen bg-[#020617] text-slate-100 flex flex-col items-center p-4 md:p-8 font-sans">
       <div className="fixed inset-0 overflow-hidden pointer-events-none opacity-20">
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600 blur-[120px] rounded-full animate-pulse"></div>
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-indigo-600 blur-[120px] rounded-full animate-pulse delay-700"></div>
@@ -155,20 +108,20 @@ const App: React.FC = () => {
 
       <header className="relative w-full max-w-4xl flex flex-col items-center mb-12 z-10 text-center">
         <div className="flex items-center gap-4 mb-4 group cursor-default">
-          <div className="p-4 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-3xl shadow-2xl shadow-blue-500/20 group-hover:scale-110 transition-transform duration-500 rotate-3 group-hover:rotate-0">
+          <div className="p-4 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-3xl shadow-2xl shadow-blue-500/20 rotate-3 group-hover:rotate-0 transition-all duration-500">
             <Zap className="w-10 h-10 text-white fill-current" />
           </div>
           <h1 className="text-6xl font-black tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-500">
             AnyStream
           </h1>
         </div>
-        <p className="text-slate-400 font-medium tracking-tight">
-          Universal media extraction • Instant Analysis
+        <p className="text-slate-400 font-medium tracking-tight uppercase text-xs tracking-[0.2em] opacity-80">
+          Instant Media Extraction Service
         </p>
       </header>
 
       <main className="relative w-full max-w-2xl space-y-8 z-10">
-        <section className="bg-slate-900/40 backdrop-blur-2xl border border-white/10 p-3 rounded-[2.5rem] shadow-2xl transition-all duration-300 hover:shadow-blue-500/5">
+        <section className="bg-slate-900/60 backdrop-blur-3xl border border-white/10 p-4 rounded-[2.5rem] shadow-2xl transition-all duration-300">
           <div className="flex flex-col gap-4">
             <div className="relative group">
               <div className="absolute inset-y-0 left-6 flex items-center pointer-events-none">
@@ -177,11 +130,11 @@ const App: React.FC = () => {
               <input 
                 ref={inputRef}
                 type="text"
-                placeholder="Paste media link here..."
+                placeholder="Paste video or shorts link here..."
                 className="w-full bg-slate-950/80 border border-slate-800 rounded-3xl pl-16 pr-14 py-6 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-slate-200 placeholder:text-slate-600 font-medium text-lg"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleAnalyze()}
+                onKeyDown={(e) => e.key === 'Enter' && handleProcess()}
               />
               {url && (
                 <button onClick={() => setUrl('')} className="absolute inset-y-0 right-6 flex items-center text-slate-500 hover:text-white transition-colors">
@@ -195,19 +148,19 @@ const App: React.FC = () => {
                 onClick={handlePaste} 
                 className="flex-1 flex items-center justify-center gap-3 bg-slate-800 hover:bg-slate-700 text-slate-200 px-6 py-4 rounded-2xl font-bold transition-all border border-slate-700/50 active:scale-95"
               >
-                <Clipboard className="w-5 h-5" /> <span>Paste</span>
+                <Clipboard className="w-5 h-5" /> <span>PASTE</span>
               </button>
               <button 
-                onClick={handleAnalyze} 
+                onClick={handleProcess} 
                 disabled={status === DownloadStatus.ANALYZING || !url} 
-                className="flex-[2] flex items-center justify-center gap-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-8 py-4 rounded-2xl font-black shadow-xl shadow-blue-600/20 transition-all active:scale-95 group"
+                className="flex-[2] flex items-center justify-center gap-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-8 py-4 rounded-2xl font-black shadow-xl shadow-blue-600/20 transition-all active:scale-95 uppercase tracking-widest"
               >
                 {status === DownloadStatus.ANALYZING ? (
                   <RefreshCw className="w-6 h-6 animate-spin" />
                 ) : (
-                  <Download className="w-6 h-6 group-hover:translate-y-1 transition-transform" />
+                  <Download className="w-6 h-6" />
                 )}
-                <span>ANALYZE</span>
+                <span>DOWNLOAD</span>
               </button>
             </div>
           </div>
@@ -217,21 +170,24 @@ const App: React.FC = () => {
           <div className="flex items-start gap-4 bg-red-500/10 border border-red-500/20 text-red-200 p-6 rounded-3xl animate-in fade-in zoom-in-95 duration-300">
             <AlertCircle className="w-6 h-6 flex-shrink-0 text-red-500 mt-1" />
             <div className="flex-1">
-              <p className="font-black text-lg mb-1 tracking-tight">Process Info</p>
+              <p className="font-black text-lg mb-1 tracking-tight">Processing Error</p>
               <p className="text-sm opacity-80 leading-relaxed font-medium">{error}</p>
             </div>
           </div>
         )}
 
         {status === DownloadStatus.ANALYZING && (
-          <div className="flex flex-col items-center justify-center py-16 space-y-6">
+          <div className="flex flex-col items-center justify-center py-20 space-y-6">
             <div className="relative">
-              <div className="w-20 h-20 border-4 border-blue-500/10 border-t-blue-500 rounded-full animate-spin"></div>
+              <div className="w-24 h-24 border-4 border-blue-500/10 border-t-blue-500 rounded-full animate-spin"></div>
               <div className="absolute inset-0 flex items-center justify-center">
-                <Layers className="w-8 h-8 text-blue-500 animate-pulse" />
+                <Layers className="w-10 h-10 text-blue-500 animate-pulse" />
               </div>
             </div>
-            <p className="text-blue-400 font-black tracking-[0.2em] text-xs uppercase animate-pulse">Running Fast Search...</p>
+            <div className="text-center">
+              <p className="text-blue-400 font-black tracking-[0.3em] text-xs uppercase animate-pulse mb-2">Syncing Data...</p>
+              <p className="text-slate-500 text-xs font-medium">Fetching original title and creator</p>
+            </div>
           </div>
         )}
 
@@ -245,41 +201,45 @@ const App: React.FC = () => {
                   className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" 
                   onError={(e) => {
                     const target = e.target as HTMLImageElement;
-                    if (target.src.includes('hqdefault')) target.src = target.src.replace('hqdefault', '0');
+                    if (target.src.includes('maxresdefault')) {
+                      target.src = target.src.replace('maxresdefault', 'hqdefault');
+                    }
                   }}
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 to-transparent opacity-60"></div>
               </div>
               <div className="p-8 flex flex-col justify-center flex-1">
-                <div>
-                  <div className="flex items-center gap-3 mb-3">
-                    <span className="px-3 py-1 bg-slate-800 text-slate-400 rounded-full text-[10px] font-black uppercase tracking-widest">{metadata.duration}</span>
-                  </div>
-                  <h2 className="text-2xl font-black text-white leading-tight mb-2 tracking-tight group-hover:text-blue-400 transition-colors line-clamp-2">
+                <div className="mb-4">
+                  <span className="px-3 py-1 bg-blue-500/10 text-blue-400 rounded-full text-[10px] font-black uppercase tracking-widest border border-blue-500/20 inline-block mb-4">
+                    {metadata.duration}
+                  </span>
+                  <h2 className="text-3xl font-black text-white leading-tight mb-2 tracking-tight line-clamp-2">
                     {metadata.title}
                   </h2>
-                  <p className="text-blue-400/80 text-lg font-bold">by {metadata.author}</p>
-                  
-                  {metadata.sources && metadata.sources.length > 0 && (
-                    <div className="mt-4 pt-4 border-t border-white/5 space-y-2">
-                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Search Grounds:</p>
-                      <div className="flex flex-wrap gap-2">
-                        {metadata.sources.map((source, i) => (
-                          <a 
-                            key={i} 
-                            href={source.uri} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="text-[10px] bg-slate-800/50 hover:bg-slate-800 px-3 py-1.5 rounded-lg text-slate-400 flex items-center gap-2 transition-colors border border-white/5"
-                          >
-                            <ExternalLink className="w-3 h-3" />
-                            <span className="max-w-[120px] truncate">{source.title}</span>
-                          </a>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                  <p className="text-blue-400 text-xl font-bold flex items-center gap-2">
+                    <span className="text-slate-500 text-sm font-black uppercase tracking-widest">By</span>
+                    {metadata.author}
+                  </p>
                 </div>
+                
+                {metadata.sources && metadata.sources.length > 0 && (
+                  <div className="pt-4 border-t border-white/5">
+                    <div className="flex flex-wrap gap-2">
+                      {metadata.sources.map((source, i) => (
+                        <a 
+                          key={i} 
+                          href={source.uri} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-[10px] bg-slate-800/80 hover:bg-slate-800 px-3 py-1.5 rounded-lg text-slate-400 flex items-center gap-2 transition-colors border border-white/5"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          <span className="max-w-[140px] truncate">{source.title}</span>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -290,17 +250,17 @@ const App: React.FC = () => {
                   disabled={status === DownloadStatus.DOWNLOADING}
                   onClick={() => startDownload(option)}
                   className={`
-                    p-6 rounded-[1.5rem] border transition-all flex items-center justify-between group relative overflow-hidden
+                    p-6 rounded-[1.8rem] border transition-all flex items-center justify-between group relative overflow-hidden
                     ${activeDownloadId === option.id ? 'bg-blue-600/20 border-blue-500 shadow-lg shadow-blue-500/10' : 'bg-slate-900/60 border-slate-800 hover:border-slate-500 hover:bg-slate-800'}
                     ${status === DownloadStatus.DOWNLOADING && activeDownloadId !== option.id ? 'opacity-40 grayscale pointer-events-none' : ''}
                   `}
                 >
                   <div className="flex items-center gap-4 relative z-10">
-                    <div className={`p-3.5 rounded-2xl ${option.format === 'MP4' ? 'bg-indigo-500/10 text-indigo-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
-                      {option.format === 'MP4' ? <Video className="w-5 h-5" /> : <Music className="w-5 h-5" />}
+                    <div className={`p-4 rounded-2xl ${option.format === 'MP4' ? 'bg-indigo-500/10 text-indigo-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
+                      {option.format === 'MP4' ? <Video className="w-6 h-6" /> : <Music className="w-6 h-6" />}
                     </div>
                     <div className="text-left">
-                      <h4 className="font-black text-lg text-slate-100 group-hover:translate-x-1 transition-transform">{option.quality}</h4>
+                      <h4 className="font-black text-xl text-slate-100">{option.quality}</h4>
                       <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">{option.format} • {option.size}</p>
                     </div>
                   </div>
@@ -312,12 +272,12 @@ const App: React.FC = () => {
                         <RefreshCw className="w-5 h-5 text-blue-500 animate-spin" />
                       </div>
                     ) : (
-                      <Download className="w-5 h-5 text-slate-700 group-hover:text-white transition-all scale-90 group-hover:scale-110" />
+                      <Download className="w-6 h-6 text-slate-700 group-hover:text-blue-500 transition-all group-hover:scale-110" />
                     )}
                   </div>
 
                   {activeDownloadId === option.id && (
-                    <div className="absolute bottom-0 left-0 h-1 bg-blue-500 transition-all duration-300 shadow-[0_0_10px_rgba(59,130,246,0.8)]" style={{ width: `${progress}%` }}></div>
+                    <div className="absolute bottom-0 left-0 h-1.5 bg-blue-500 transition-all duration-300" style={{ width: `${progress}%` }}></div>
                   )}
                 </button>
               ))}
@@ -326,18 +286,16 @@ const App: React.FC = () => {
         )}
 
         {status === DownloadStatus.COMPLETED && (
-          <div className="fixed bottom-12 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-blue-600 text-white px-10 py-5 rounded-3xl shadow-2xl animate-in slide-in-from-bottom-12 duration-500 z-50">
-            <div className="bg-white/20 p-2 rounded-full">
-              <CheckCircle className="w-6 h-6" />
-            </div>
-            <span className="font-black text-lg tracking-tight">READY TO DOWNLOAD!</span>
+          <div className="fixed bottom-12 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-blue-600 text-white px-10 py-6 rounded-[2rem] shadow-2xl animate-in slide-in-from-bottom-12 duration-500 z-50">
+            <CheckCircle className="w-8 h-8" />
+            <span className="font-black text-xl tracking-tight">CONVERSION COMPLETE!</span>
           </div>
         )}
       </main>
 
       <footer className="mt-auto py-12 text-center opacity-30 w-full max-w-2xl border-t border-white/5">
-        <p className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-500 mb-2">AnyStream Systems Inc.</p>
-        <p className="text-[9px] font-bold text-slate-600 px-10">All media rights belong to original creators.</p>
+        <p className="text-[10px] font-black uppercase tracking-[0.5em] text-slate-500 mb-2">AnyStream Cloud Services</p>
+        <p className="text-[9px] font-bold text-slate-600 px-10">Verified media metadata provided by Gemini 3 Flash.</p>
       </footer>
     </div>
   );
