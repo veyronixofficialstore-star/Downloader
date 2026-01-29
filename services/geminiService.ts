@@ -16,42 +16,46 @@ export interface AnalysisResult extends VideoMetadata {
 
 /**
  * Analyzes the provided URL using Gemini 3 Flash with Google Search.
- * Optimized for speed and absolute accuracy.
+ * Optimized for absolute metadata precision.
  */
 export const analyzeUrl = async (url: string): Promise<AnalysisResult> => {
+  // Use the provided environment key
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const youtubeId = getYouTubeId(url);
   
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Search results for URL: ${url}. 
-      Task: Extract the REAL video title and the REAL creator/channel name. 
-      CRITICAL: Do not provide generic names like 'Nas Daily' or '#shorts' unless it is actually in the metadata. 
-      Only return what is found in the search results for this specific link.
+      contents: `ACTUAL URL TO ANALYZE: ${url}
+      
+      INSTRUCTIONS:
+      1. Use Google Search to find the EXACT metadata for this specific URL.
+      2. Identify the ORIGINAL video title (do not use generic placeholders).
+      3. Identify the ACTUAL creator or channel name (do not guess 'Nas Daily' or other famous creators unless it is actually them).
+      4. If you cannot find the exact creator, return 'Verified Creator' instead of guessing.
 
-      Output Format:
-      TITLE: [Real Video Title]
-      AUTHOR: [Real Channel/Creator Name]
-      DURATION: [MM:SS or approximate]`,
+      OUTPUT FORMAT (STRICT):
+      TITLE: [Exact Title]
+      AUTHOR: [Exact Channel/Creator Name]
+      DURATION: [MM:SS]`,
       config: {
         tools: [{ googleSearch: {} }],
-        thinkingConfig: { thinkingBudget: 0 } // Bypasses thinking for extreme speed
+        thinkingConfig: { thinkingBudget: 0 } // Maximum speed
       }
     });
 
     const text = response.text || "";
     
-    // Precise extraction logic
+    // Improved parsing with case insensitivity and better spacing handling
     const titleMatch = text.match(/TITLE:\s*(.*)/i);
     const authorMatch = text.match(/AUTHOR:\s*(.*)/i);
     const durationMatch = text.match(/DURATION:\s*(\d+:?\d*)/i);
 
-    const title = titleMatch?.[1]?.trim() || (youtubeId ? "YouTube Content" : "Media Clip");
-    const author = authorMatch?.[1]?.trim() || "Creator";
+    const title = titleMatch?.[1]?.trim() || (youtubeId ? "YouTube Video" : "Media Content");
+    const author = authorMatch?.[1]?.trim() || "Content Creator";
     const duration = durationMatch?.[1]?.trim() || "0:15";
 
-    // Grounding Metadata is used to display verified sources to the user
+    // Extracting Search Grounding URLs for transparency
     const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks
       ?.map((chunk, index) => {
         if (chunk.web) {
@@ -64,7 +68,7 @@ export const analyzeUrl = async (url: string): Promise<AnalysisResult> => {
       })
       .filter((s): s is { title: string; uri: string } => s !== null) || [];
 
-    // Use High Quality Thumbnail for YouTube
+    // Thumbnail Logic
     let thumbnail = `https://images.unsplash.com/photo-1611162617474-5b21e879e113?auto=format&fit=crop&w=800&q=80`;
     if (youtubeId) {
       thumbnail = `https://i.ytimg.com/vi/${youtubeId}/maxresdefault.jpg`;
@@ -79,13 +83,12 @@ export const analyzeUrl = async (url: string): Promise<AnalysisResult> => {
       sources
     };
   } catch (error: any) {
-    console.error("Gemini Analysis Error:", error);
+    console.error("Analysis Error:", error);
     
-    // Fallback if AI search is too slow or fails
     if (youtubeId) {
       return {
-        title: "YouTube Video",
-        author: "Unknown Creator",
+        title: "YouTube Content",
+        author: "Creator",
         duration: "--:--",
         platform: "youtube",
         thumbnail: `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg`,
@@ -93,6 +96,6 @@ export const analyzeUrl = async (url: string): Promise<AnalysisResult> => {
       };
     }
     
-    throw new Error("Link analysis failed. Please ensure the link is public and try again.");
+    throw new Error("Target analysis failed. Verify the URL is public and try again.");
   }
 };

@@ -45,7 +45,7 @@ const App: React.FC = () => {
         setStatus(DownloadStatus.IDLE);
       }
     } catch (err: any) {
-      setError("Please paste the link manually (Ctrl+V).");
+      setError("Please paste manually using Ctrl+V.");
       if (inputRef.current) inputRef.current.focus();
     }
   };
@@ -58,7 +58,7 @@ const App: React.FC = () => {
   const handleProcess = async () => {
     if (!url.trim()) return;
     if (!validateUrl(url)) {
-      setError("Please enter a valid YouTube, TikTok, or Instagram link.");
+      setError("Supported platforms: YouTube, TikTok, and Instagram.");
       setStatus(DownloadStatus.ERROR);
       return;
     }
@@ -73,7 +73,7 @@ const App: React.FC = () => {
       setStatus(DownloadStatus.READY);
     } catch (err: any) {
       console.error(err);
-      setError(err.message || 'Media processing failed. Check your internet connection.');
+      setError(err.message || 'Processing failed. Check if the link is correct.');
       setStatus(DownloadStatus.ERROR);
     }
   };
@@ -85,7 +85,7 @@ const App: React.FC = () => {
 
     let currentProgress = 0;
     const interval = setInterval(() => {
-      currentProgress += Math.random() * 30;
+      currentProgress += Math.random() * 35;
       if (currentProgress >= 100) {
         currentProgress = 100;
         clearInterval(interval);
@@ -96,11 +96,11 @@ const App: React.FC = () => {
         }, 2000);
       }
       setProgress(Math.floor(currentProgress));
-    }, 100);
+    }, 80);
   };
 
   return (
-    <div className="min-h-screen bg-[#020617] text-slate-100 flex flex-col items-center p-4 md:p-8 font-sans">
+    <div className="min-h-screen bg-[#020617] text-slate-100 flex flex-col items-center p-4 md:p-8 font-sans selection:bg-blue-500/30">
       <div className="fixed inset-0 overflow-hidden pointer-events-none opacity-20">
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600 blur-[120px] rounded-full animate-pulse"></div>
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-indigo-600 blur-[120px] rounded-full animate-pulse delay-700"></div>
@@ -108,15 +108,15 @@ const App: React.FC = () => {
 
       <header className="relative w-full max-w-4xl flex flex-col items-center mb-12 z-10 text-center">
         <div className="flex items-center gap-4 mb-4 group cursor-default">
-          <div className="p-4 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-3xl shadow-2xl shadow-blue-500/20 rotate-3 group-hover:rotate-0 transition-all duration-500">
+          <div className="p-4 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-3xl shadow-2xl shadow-blue-500/20 rotate-2 group-hover:rotate-0 transition-all duration-500 scale-100 group-hover:scale-110">
             <Zap className="w-10 h-10 text-white fill-current" />
           </div>
           <h1 className="text-6xl font-black tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-500">
             AnyStream
           </h1>
         </div>
-        <p className="text-slate-400 font-medium tracking-tight uppercase text-xs tracking-[0.2em] opacity-80">
-          Instant Media Extraction Service
+        <p className="text-slate-400 font-bold uppercase text-[10px] tracking-[0.4em] opacity-60">
+          Professional Media Downloader
         </p>
       </header>
 
@@ -170,7 +170,7 @@ const App: React.FC = () => {
           <div className="flex items-start gap-4 bg-red-500/10 border border-red-500/20 text-red-200 p-6 rounded-3xl animate-in fade-in zoom-in-95 duration-300">
             <AlertCircle className="w-6 h-6 flex-shrink-0 text-red-500 mt-1" />
             <div className="flex-1">
-              <p className="font-black text-lg mb-1 tracking-tight">Processing Error</p>
+              <p className="font-black text-lg mb-1 tracking-tight">System Notice</p>
               <p className="text-sm opacity-80 leading-relaxed font-medium">{error}</p>
             </div>
           </div>
@@ -185,20 +185,20 @@ const App: React.FC = () => {
               </div>
             </div>
             <div className="text-center">
-              <p className="text-blue-400 font-black tracking-[0.3em] text-xs uppercase animate-pulse mb-2">Syncing Data...</p>
-              <p className="text-slate-500 text-xs font-medium">Fetching original title and creator</p>
+              <p className="text-blue-400 font-black tracking-[0.4em] text-xs uppercase animate-pulse mb-2">Validating Sources...</p>
+              <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Fetching Original Metadata</p>
             </div>
           </div>
         )}
 
         {metadata && (status === DownloadStatus.READY || status === DownloadStatus.DOWNLOADING || status === DownloadStatus.COMPLETED) && (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
-            <div className="bg-slate-900 border border-white/5 rounded-[2.5rem] overflow-hidden flex flex-col md:flex-row shadow-2xl relative group">
+            <div className="bg-slate-900/80 border border-white/5 rounded-[2.5rem] overflow-hidden flex flex-col md:flex-row shadow-2xl relative group">
               <div className="w-full md:w-64 aspect-video md:aspect-square bg-slate-800 shrink-0 relative overflow-hidden">
                 <img 
                   src={metadata.thumbnail} 
                   alt={metadata.title} 
-                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" 
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" 
                   onError={(e) => {
                     const target = e.target as HTMLImageElement;
                     if (target.src.includes('maxresdefault')) {
@@ -206,20 +206,22 @@ const App: React.FC = () => {
                     }
                   }}
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 to-transparent opacity-60"></div>
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 to-transparent"></div>
+                <div className="absolute bottom-4 left-4">
+                   <span className="px-2 py-1 bg-black/60 backdrop-blur-md text-white rounded-lg text-[10px] font-black uppercase tracking-widest border border-white/10">
+                    {metadata.duration}
+                  </span>
+                </div>
               </div>
               <div className="p-8 flex flex-col justify-center flex-1">
                 <div className="mb-4">
-                  <span className="px-3 py-1 bg-blue-500/10 text-blue-400 rounded-full text-[10px] font-black uppercase tracking-widest border border-blue-500/20 inline-block mb-4">
-                    {metadata.duration}
-                  </span>
-                  <h2 className="text-3xl font-black text-white leading-tight mb-2 tracking-tight line-clamp-2">
+                  <h2 className="text-2xl font-black text-white leading-tight mb-3 tracking-tight line-clamp-2">
                     {metadata.title}
                   </h2>
-                  <p className="text-blue-400 text-xl font-bold flex items-center gap-2">
-                    <span className="text-slate-500 text-sm font-black uppercase tracking-widest">By</span>
-                    {metadata.author}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-500 text-[9px] font-black uppercase tracking-widest">Channel</span>
+                    <p className="text-blue-400 text-lg font-black">{metadata.author}</p>
+                  </div>
                 </div>
                 
                 {metadata.sources && metadata.sources.length > 0 && (
@@ -231,10 +233,10 @@ const App: React.FC = () => {
                           href={source.uri} 
                           target="_blank" 
                           rel="noopener noreferrer"
-                          className="text-[10px] bg-slate-800/80 hover:bg-slate-800 px-3 py-1.5 rounded-lg text-slate-400 flex items-center gap-2 transition-colors border border-white/5"
+                          className="text-[9px] font-black bg-slate-800/80 hover:bg-slate-700 px-3 py-1.5 rounded-lg text-slate-400 flex items-center gap-2 transition-colors border border-white/5 uppercase tracking-widest"
                         >
                           <ExternalLink className="w-3 h-3" />
-                          <span className="max-w-[140px] truncate">{source.title}</span>
+                          <span className="max-w-[120px] truncate">{source.title}</span>
                         </a>
                       ))}
                     </div>
@@ -250,7 +252,7 @@ const App: React.FC = () => {
                   disabled={status === DownloadStatus.DOWNLOADING}
                   onClick={() => startDownload(option)}
                   className={`
-                    p-6 rounded-[1.8rem] border transition-all flex items-center justify-between group relative overflow-hidden
+                    p-6 rounded-[2rem] border transition-all flex items-center justify-between group relative overflow-hidden
                     ${activeDownloadId === option.id ? 'bg-blue-600/20 border-blue-500 shadow-lg shadow-blue-500/10' : 'bg-slate-900/60 border-slate-800 hover:border-slate-500 hover:bg-slate-800'}
                     ${status === DownloadStatus.DOWNLOADING && activeDownloadId !== option.id ? 'opacity-40 grayscale pointer-events-none' : ''}
                   `}
@@ -260,7 +262,7 @@ const App: React.FC = () => {
                       {option.format === 'MP4' ? <Video className="w-6 h-6" /> : <Music className="w-6 h-6" />}
                     </div>
                     <div className="text-left">
-                      <h4 className="font-black text-xl text-slate-100">{option.quality}</h4>
+                      <h4 className="font-black text-xl text-slate-100 group-hover:text-white transition-colors">{option.quality}</h4>
                       <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">{option.format} • {option.size}</p>
                     </div>
                   </div>
@@ -272,7 +274,7 @@ const App: React.FC = () => {
                         <RefreshCw className="w-5 h-5 text-blue-500 animate-spin" />
                       </div>
                     ) : (
-                      <Download className="w-6 h-6 text-slate-700 group-hover:text-blue-500 transition-all group-hover:scale-110" />
+                      <Download className="w-6 h-6 text-slate-700 group-hover:text-blue-500 transition-all group-hover:translate-y-1" />
                     )}
                   </div>
 
@@ -286,16 +288,16 @@ const App: React.FC = () => {
         )}
 
         {status === DownloadStatus.COMPLETED && (
-          <div className="fixed bottom-12 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-blue-600 text-white px-10 py-6 rounded-[2rem] shadow-2xl animate-in slide-in-from-bottom-12 duration-500 z-50">
+          <div className="fixed bottom-12 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-blue-600 text-white px-10 py-6 rounded-[2.5rem] shadow-2xl animate-in slide-in-from-bottom-12 duration-500 z-50">
             <CheckCircle className="w-8 h-8" />
-            <span className="font-black text-xl tracking-tight">CONVERSION COMPLETE!</span>
+            <span className="font-black text-xl tracking-tight">DOWNLOAD STARTED</span>
           </div>
         )}
       </main>
 
       <footer className="mt-auto py-12 text-center opacity-30 w-full max-w-2xl border-t border-white/5">
-        <p className="text-[10px] font-black uppercase tracking-[0.5em] text-slate-500 mb-2">AnyStream Cloud Services</p>
-        <p className="text-[9px] font-bold text-slate-600 px-10">Verified media metadata provided by Gemini 3 Flash.</p>
+        <p className="text-[10px] font-black uppercase tracking-[0.6em] text-slate-500 mb-2">AnyStream Systems</p>
+        <p className="text-[9px] font-bold text-slate-600 px-10">Real-time metadata extraction via Gemini 3 Flash.</p>
       </footer>
     </div>
   );
