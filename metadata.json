@@ -1,0 +1,5 @@
+{
+  "name": "AnyStream Universal Downloader",
+  "description": "A high-performance media downloader UI for YouTube Shorts, Instagram, and TikTok, featuring resolution selection and MP3/MP4 conversion simulation using Gemini for link analysis.",
+  "requestFramePermissions": []
+}
