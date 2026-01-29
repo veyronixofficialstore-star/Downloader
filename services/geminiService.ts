@@ -1,4 +1,5 @@
 
+import { GoogleGenAI, Type } from "@google/genai";
 import { VideoMetadata } from "../types";
 
 /**
@@ -10,37 +11,33 @@ const getYouTubeId = (url: string): string | null => {
 };
 
 export interface AnalysisResult extends VideoMetadata {
-  sources?: { title: string; uri: string }[];
   isVerified?: boolean;
 }
 
 /**
- * Official YouTube oEmbed fetcher - No API Key required, 100% accurate for YT.
+ * Official YouTube oEmbed fetcher - No API Key required, used as a fast first-pass.
  */
 const fetchYoutubeOEmbed = async (url: string) => {
   try {
-    // Standardize URL for oEmbed
     const cleanUrl = url.split('&')[0];
     const response = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(cleanUrl)}&format=json`);
     if (response.ok) {
       return await response.json();
     }
   } catch (e) {
-    console.warn("oEmbed fetch failed, falling back to HF", e);
+    console.warn("oEmbed fetch failed", e);
   }
   return null;
 };
 
 /**
- * Analyzes the provided URL.
- * Prioritizes official oEmbed for YouTube, falls back to HF Inference for others.
+ * Analyzes the provided URL using Gemini 3 Flash.
  */
 export const analyzeUrl = async (url: string): Promise<AnalysisResult> => {
-  const apiKey = process.env.API_KEY; 
   const youtubeId = getYouTubeId(url);
   const isYoutube = url.toLowerCase().includes('youtube.com') || url.toLowerCase().includes('youtu.be');
 
-  // 1. Try Official YouTube oEmbed first for guaranteed accuracy
+  // 1. Quick pass for YouTube
   if (isYoutube) {
     const oembed = await fetchYoutubeOEmbed(url);
     if (oembed) {
@@ -54,54 +51,50 @@ export const analyzeUrl = async (url: string): Promise<AnalysisResult> => {
       };
     }
   }
-  
-  // 2. Fallback/Platform analysis using Hugging Face Inference
+
+  // 2. Deep analysis using Gemini for all platforms
   try {
-    const response = await fetch("https://router.huggingface.co/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "HuggingFaceTB/SmolLM3-3B:hf-inference",
-        messages: [
-          {
-            role: "system",
-            content: "You are a media parser. Extract the title and creator name from the URL string. Return format: TITLE: [name], AUTHOR: [name]."
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: `Extract the video title and creator name from this URL: ${url}. If it's a social media link (TikTok, Instagram, YouTube), guess based on the URL patterns if direct info isn't clear.`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            title: { type: Type.STRING },
+            author: { type: Type.STRING },
+            platform: { type: Type.STRING, description: "One of: youtube, tiktok, instagram, unknown" }
           },
-          {
-            role: "user",
-            content: `Extract info from: ${url}`
-          }
-        ],
-        stream: false
-      }),
+          required: ["title", "author", "platform"]
+        }
+      }
     });
 
-    if (!response.ok) throw new Error("HF API unreachable");
-
-    const json = await response.json();
-    const output = json.choices?.[0]?.message?.content || "";
-
-    const titleMatch = output.match(/TITLE:\s*(.*)/i);
-    const authorMatch = output.match(/AUTHOR:\s*(.*)/i);
+    const data = JSON.parse(response.text || "{}");
+    
+    // Attempt a reasonable thumbnail
+    let thumb = "https://images.unsplash.com/photo-1611162617474-5b21e879e113?auto=format&fit=crop&w=800&q=80";
+    if (isYoutube && youtubeId) {
+      thumb = `https://i.ytimg.com/vi/${youtubeId}/maxresdefault.jpg`;
+    }
 
     return {
-      title: titleMatch?.[1]?.trim() || (youtubeId ? "YouTube Video" : "Social Media Post"),
-      author: authorMatch?.[1]?.trim() || "Content Creator",
-      duration: "0:30",
-      platform: url.includes('tiktok') ? 'tiktok' : (url.includes('instagram') ? 'instagram' : 'youtube'),
-      thumbnail: `https://images.unsplash.com/photo-1611162617474-5b21e879e113?auto=format&fit=crop&w=800&q=80`,
+      title: data.title || "Media Content",
+      author: data.author || "Content Creator",
+      duration: "--:--",
+      platform: data.platform || (isYoutube ? 'youtube' : 'unknown'),
+      thumbnail: thumb,
       isVerified: false
     };
-  } catch (error: any) {
-    // Ultimate fallback if APIs fail
+  } catch (error) {
+    console.error("Gemini analysis failed:", error);
     return {
       title: youtubeId ? "YouTube Shorts Content" : "Media Clip",
       author: "Original Creator",
       duration: "--:--",
-      platform: "unknown",
+      platform: isYoutube ? "youtube" : "unknown",
       thumbnail: youtubeId ? `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg` : "https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=800",
       isVerified: false
     };

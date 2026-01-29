@@ -1,5 +1,5 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Download, 
   Clipboard, 
@@ -7,20 +7,15 @@ import {
   Video, 
   Music, 
   CheckCircle, 
-  AlertCircle,
   RefreshCw,
   Zap,
   X,
-  Layers,
   ShieldCheck,
-  FileDown,
-  Globe,
-  Activity,
-  Cpu,
-  Settings2,
   Server,
   ZapOff,
-  Lock
+  Loader2,
+  Wifi,
+  ExternalLink
 } from 'lucide-react';
 import { analyzeUrl, AnalysisResult } from './services/geminiService';
 import { DownloadStatus, DownloadOption } from './types';
@@ -30,16 +25,27 @@ const DOWNLOAD_OPTIONS: DownloadOption[] = [
   { id: '720', format: 'MP4', quality: '720p HD', size: 'Original' },
   { id: '480', format: 'MP4', quality: '480p SD', size: 'Original' },
   { id: '360', format: 'MP4', quality: '360p Mobile', size: 'Original' },
-  { id: 'mp3-hi', format: 'MP3', quality: '320kbps Audio', size: 'Original' },
+  { id: 'mp3', format: 'MP3', quality: 'MP3 Audio', size: 'Original' },
 ];
 
 /**
- * Modern Cobalt v10+ High-Availability Mirrors
+ * High-Availability Global Mirrors.
+ * These are the most stable endpoints for the Cobalt protocol.
  */
-const COBALT_INSTANCES = [
+const MIRRORS = [
+  'https://api.cobalt.tools/api/json',
+  'https://cobalt.moe/api/json',
   'https://co.wuk.sh/api/json',
-  'https://cobalt.tools/api/json',
-  'https://cobalt.moe/api/json'
+  'https://cobalt.v0lt.io/api/json'
+];
+
+/**
+ * Standard CORS Proxies.
+ * Used to bypass browser-side blocking (CORS) when mirrors don't allow direct fetch.
+ */
+const PROXIES = [
+  'https://corsproxy.io/?',
+  'https://api.allorigins.win/raw?url='
 ];
 
 const App: React.FC = () => {
@@ -49,71 +55,65 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [activeDownloadId, setActiveDownloadId] = useState<string | null>(null);
-  const [isProxying, setIsProxying] = useState(false);
-  const [activeInstanceIndex, setActiveInstanceIndex] = useState(0);
+  const [mirrorIndex, setMirrorIndex] = useState(0);
+  
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleReset = () => {
+    setUrl('');
+    setMetadata(null);
+    setStatus(DownloadStatus.IDLE);
+    setError(null);
+    setActiveDownloadId(null);
+    setProgress(0);
+  };
 
   const handlePaste = async () => {
     try {
-      setError(null);
       const text = await navigator.clipboard.readText();
-      if (text) {
-        setUrl(text.trim());
-        setMetadata(null);
-        setStatus(DownloadStatus.IDLE);
-      }
-    } catch (err: any) {
-      setError("Clipboard access blocked. Please paste manually into the field.");
-      if (inputRef.current) inputRef.current.focus();
+      if (text) setUrl(text.trim());
+    } catch {
+      inputRef.current?.focus();
     }
   };
 
   const handleProcess = async () => {
     if (!url.trim()) return;
-    
     setStatus(DownloadStatus.ANALYZING);
     setError(null);
-    setMetadata(null);
-
     try {
       const data = await analyzeUrl(url);
       setMetadata(data);
       setStatus(DownloadStatus.READY);
-    } catch (err: any) {
-      setError('System could not analyze this URL. Platform metadata rejected the handshake.');
+    } catch (err) {
+      setError('Unable to analyze this link. Please check if it is valid.');
       setStatus(DownloadStatus.ERROR);
     }
   };
 
-  /**
-   * Universal Smart-Tunnel Fetcher
-   * Resolves "Failed to fetch" by attempting direct then proxied paths.
-   */
-  const fetchRealMedia = async (option: DownloadOption, retryCount = 0, forceProxy = false) => {
+  const executeDownload = async (option: DownloadOption, attempt = 0) => {
     setStatus(DownloadStatus.DOWNLOADING);
-    setProgress(10 + (retryCount * 20));
-    
+    setProgress(10 + (attempt * 20));
+
     try {
-      const cleanUrl = url.split(/[?&]si=/)[0].split(/[?&]feature=/)[0];
-      const targetApi = COBALT_INSTANCES[activeInstanceIndex % COBALT_INSTANCES.length];
+      const activeMirror = MIRRORS[mirrorIndex % MIRRORS.length];
       
-      const payload = {
-        url: cleanUrl,
-        videoQuality: option.id === 'mp3-hi' ? 'max' : option.id,
-        audioFormat: 'mp3',
-        filenameStyle: 'pretty',
-        downloadMode: 'default',
-        isAudioOnly: option.format === 'MP3',
-        vCodec: 'h264',
-        isNoQuery: true
+      // We use a simplified payload to maximize compatibility with older/newer mirrors
+      const payload: any = {
+        url: url.trim(),
+        videoQuality: option.id === 'mp3' ? '720' : option.id,
+        filenameStyle: 'pretty'
       };
 
-      // Construct final URL based on proxy state
-      const requestUrl = forceProxy 
-        ? `https://corsproxy.io/?${encodeURIComponent(targetApi)}`
-        : targetApi;
+      if (option.format === 'MP3') {
+        payload.isAudioOnly = true;
+      }
 
-      if (forceProxy) setIsProxying(true);
+      // First try: Direct POST to mirror
+      // Second try: Proxy-assisted POST
+      const requestUrl = attempt % 2 === 0 
+        ? activeMirror 
+        : `${PROXIES[0]}${encodeURIComponent(activeMirror)}`;
 
       const response = await fetch(requestUrl, {
         method: 'POST',
@@ -125,284 +125,225 @@ const App: React.FC = () => {
       });
 
       if (!response.ok) {
-        // If the mirror is down or rejects, cycle to next mirror
-        if (retryCount < COBALT_INSTANCES.length - 1) {
-          setActiveInstanceIndex(prev => prev + 1);
-          return fetchRealMedia(option, retryCount + 1, false);
+        // If 405 (Method Not Allowed) or 400, rotate mirror immediately
+        if (attempt < MIRRORS.length * 2) {
+          if (attempt % 2 !== 0) setMirrorIndex(prev => prev + 1);
+          return executeDownload(option, attempt + 1);
         }
-        throw new Error(`Mirror Status Error: ${response.status}`);
+        throw new Error(`Server returned status ${response.status}`);
       }
 
       const data = await response.json();
-      setProgress(85);
-
+      
       if (data.status === 'stream' || data.status === 'redirect' || data.status === 'success') {
-        const downloadUrl = data.url;
-        window.open(downloadUrl, '_blank');
-        setProgress(100);
-        setStatus(DownloadStatus.COMPLETED);
-      } else if (data.status === 'error') {
-        // Specifically catch legacy v7 messages
-        if (data.text?.toLowerCase().includes("v7 api")) {
-          setActiveInstanceIndex(prev => prev + 1);
-          return fetchRealMedia(option, retryCount + 1, true);
+        const downloadUrl = data.url || data.stream;
+        if (downloadUrl) {
+          window.open(downloadUrl, '_blank');
+          setStatus(DownloadStatus.COMPLETED);
+          setProgress(100);
+        } else {
+          throw new Error('No download link was generated.');
         }
-        throw new Error(data.text || "Handshake rejected by media engine.");
       } else if (data.status === 'picker') {
         window.open(data.picker[0].url, '_blank');
         setStatus(DownloadStatus.COMPLETED);
+        setProgress(100);
       } else {
-        throw new Error("Invalid protocol response from tunnel.");
+        throw new Error(data.text || 'The server rejected this video request.');
       }
     } catch (e: any) {
-      console.error("Tunnel Critical Error:", e);
-      
-      // AUTO-RECOVERY for "Failed to fetch" (CORS)
-      if (e instanceof TypeError && !forceProxy) {
-        console.warn("Direct fetch blocked by CORS. Activating Proxy Tunnel...");
-        return fetchRealMedia(option, retryCount, true);
+      if (attempt < MIRRORS.length * 2) {
+        setMirrorIndex(prev => prev + 1);
+        return executeDownload(option, attempt + 1);
       }
-
-      // Final failover to next mirror
-      if (retryCount < COBALT_INSTANCES.length - 1) {
-         setActiveInstanceIndex(prev => prev + 1);
-         return fetchRealMedia(option, retryCount + 1, false);
-      }
-
-      setError(e.message || "All media tunnels are currently blocked or congested.");
+      setError('Connection failed. This service might be temporarily unavailable. Please try again later.');
       setStatus(DownloadStatus.ERROR);
     } finally {
       setTimeout(() => {
-        setIsProxying(false);
         if (status !== DownloadStatus.ERROR) {
           setStatus(DownloadStatus.READY);
           setActiveDownloadId(null);
         }
-      }, 4000);
+      }, 3000);
     }
   };
 
   const startDownload = (option: DownloadOption) => {
     setActiveDownloadId(option.id);
     setError(null);
-    fetchRealMedia(option);
+    executeDownload(option);
   };
 
+  const currentHost = new URL(MIRRORS[mirrorIndex % MIRRORS.length]).hostname;
+
   return (
-    <div className="min-h-screen bg-[#020617] text-slate-100 flex flex-col items-center p-4 md:p-8 font-sans selection:bg-blue-500/40">
-      {/* Visual FX Layers */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none opacity-20">
-        <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-blue-600 blur-[150px] rounded-full animate-pulse"></div>
-        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-indigo-600 blur-[150px] rounded-full animate-pulse delay-1000"></div>
+    <div className="min-h-screen bg-[#0f172a] text-slate-200 flex flex-col items-center p-4 md:p-8">
+      {/* Background Glow */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden opacity-20">
+        <div className="absolute -top-[10%] -left-[10%] w-[40%] h-[40%] bg-blue-600 rounded-full blur-[120px]"></div>
+        <div className="absolute -bottom-[10%] -right-[10%] w-[40%] h-[40%] bg-indigo-800 rounded-full blur-[120px]"></div>
       </div>
 
-      <header className="relative w-full max-w-4xl flex flex-col items-center mb-16 z-10 text-center">
-        <div className="flex items-center gap-5 mb-6 group cursor-default">
-          <div className="p-5 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-[2.5rem] shadow-2xl shadow-blue-500/20 rotate-3 group-hover:rotate-0 transition-all duration-700 scale-100 group-hover:scale-110">
-            <Zap className="w-12 h-12 text-white fill-current" />
+      <header className="relative w-full max-w-xl text-center mb-8 pt-6 z-10">
+        <div className="inline-flex items-center gap-2 mb-2">
+          <div className="p-1.5 bg-blue-600 rounded-lg">
+            <Zap className="w-5 h-5 text-white fill-current" />
           </div>
-          <h1 className="text-7xl font-black tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-500 italic">
-            AnyStream
-          </h1>
+          <h1 className="text-2xl font-bold tracking-tight text-white">AnyStream</h1>
         </div>
-        <div className="flex flex-col items-center gap-3">
-          <div className="flex items-center gap-2 text-slate-500 font-black uppercase text-[10px] tracking-[0.6em] opacity-80">
-            <ShieldCheck className="w-4 h-4 text-blue-500" />
-            <span>SECURE TUNNEL SYSTEM V12.0</span>
-          </div>
-          <div className="flex items-center gap-3 px-5 py-2 bg-blue-500/10 border border-blue-500/20 rounded-full">
-            <Server className="w-3 h-3 text-blue-400 animate-pulse" />
-            <span className="text-[10px] font-black uppercase tracking-widest text-blue-400">
-              Active Mirror: {new URL(COBALT_INSTANCES[activeInstanceIndex % COBALT_INSTANCES.length]).hostname}
-            </span>
-          </div>
-        </div>
+        <p className="text-slate-400 text-sm font-medium">Fast, Free Media Downloader</p>
       </header>
 
-      <main className="relative w-full max-w-2xl space-y-10 z-10">
-        <section className="bg-slate-900/40 backdrop-blur-3xl border border-white/5 p-5 rounded-[3.5rem] shadow-2xl">
-          <div className="flex flex-col gap-5">
-            <div className="relative group">
-              <div className="absolute inset-y-0 left-7 flex items-center pointer-events-none">
-                <LinkIcon className="w-6 h-6 text-slate-500 group-focus-within:text-blue-500 transition-colors" />
+      <main className="relative w-full max-w-xl space-y-4 z-10">
+        {/* Input Section */}
+        <div className="bg-slate-900/80 border border-slate-800 p-4 rounded-xl shadow-lg backdrop-blur-sm">
+          <div className="flex flex-col gap-3">
+            <div className="relative">
+              <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+                <LinkIcon className="w-4 h-4 text-slate-500" />
               </div>
               <input 
                 ref={inputRef}
                 type="text"
-                placeholder="Paste YouTube Shorts or Video URL..."
-                className="w-full bg-slate-950/80 border border-slate-800 rounded-[2.2rem] pl-16 pr-14 py-7 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-slate-200 placeholder:text-slate-700 font-bold text-xl shadow-inner"
+                placeholder="Paste YouTube, TikTok or IG link..."
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-10 pr-10 py-2.5 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 outline-none transition-all text-sm text-slate-100"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleProcess()}
               />
               {url && (
-                <button onClick={() => setUrl('')} className="absolute inset-y-0 right-7 flex items-center text-slate-600 hover:text-white transition-colors">
-                  <X className="w-7 h-7" />
+                <button onClick={handleReset} className="absolute inset-y-0 right-3 flex items-center text-slate-500 hover:text-white">
+                  <X className="w-4 h-4" />
                 </button>
               )}
             </div>
             
-            <div className="flex flex-wrap gap-5">
+            <div className="flex gap-2">
               <button 
                 onClick={handlePaste} 
-                className="flex-1 flex items-center justify-center gap-3 bg-slate-800/80 hover:bg-slate-700 text-slate-200 px-8 py-5 rounded-[1.8rem] font-black transition-all border border-slate-700/50 active:scale-95 uppercase tracking-widest text-sm"
+                className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 py-2 rounded-lg font-semibold text-xs transition-colors"
               >
-                <Clipboard className="w-5 h-5" /> <span>PASTE</span>
+                Paste Link
               </button>
               <button 
                 onClick={handleProcess} 
                 disabled={status === DownloadStatus.ANALYZING || !url} 
-                className="flex-[2] flex items-center justify-center gap-4 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-10 py-5 rounded-[1.8rem] font-black shadow-2xl shadow-blue-600/30 transition-all active:scale-95 uppercase tracking-[0.2em] text-lg"
+                className="flex-[2] bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white py-2 rounded-lg font-bold text-xs shadow-md shadow-blue-900/20 flex items-center justify-center gap-2"
               >
                 {status === DownloadStatus.ANALYZING ? (
-                  <RefreshCw className="w-7 h-7 animate-spin" />
+                  <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
-                  <Download className="w-7 h-7" />
+                  <Download className="w-4 h-4" />
                 )}
-                <span>DOWNLOAD</span>
+                Analyze Content
               </button>
             </div>
           </div>
-        </section>
+        </div>
 
+        {/* Error Messaging */}
         {error && (
-          <div className="flex items-start gap-5 bg-red-500/10 border border-red-500/20 text-red-200 p-8 rounded-[2.5rem] animate-in fade-in zoom-in-95 duration-500 shadow-2xl ring-1 ring-red-500/50">
-            <ZapOff className="w-8 h-8 flex-shrink-0 text-red-500 mt-1" />
+          <div className="bg-red-500/10 border border-red-500/20 text-red-200 p-4 rounded-xl flex gap-3 items-start animate-in fade-in slide-in-from-top-1">
+            <ZapOff className="w-5 h-5 shrink-0 text-red-500" />
             <div className="flex-1">
-              <p className="font-black text-xl mb-2 tracking-tight">Tunnel Protocol Blocked</p>
-              <p className="text-sm opacity-80 leading-relaxed font-bold">{error}</p>
-              <div className="mt-4 flex gap-4">
-                <button onClick={() => { setStatus(DownloadStatus.IDLE); setError(null); }} className="text-[10px] font-black uppercase tracking-widest text-red-400 hover:underline">Reset System</button>
-                <button onClick={() => { setActiveInstanceIndex(prev => prev + 1); handleProcess(); }} className="text-[10px] font-black uppercase tracking-widest text-blue-400 hover:underline">Force Switch Mirror</button>
-              </div>
+              <p className="text-xs font-bold mb-0.5">Download Stopped</p>
+              <p className="text-[11px] opacity-80 leading-relaxed">{error}</p>
+              <button 
+                onClick={() => { setMirrorIndex(prev => prev + 1); handleProcess(); }}
+                className="mt-2 text-[10px] font-bold uppercase text-blue-400 hover:underline flex items-center gap-1"
+              >
+                Try Another Server <RefreshCw className="w-3 h-3" />
+              </button>
             </div>
           </div>
         )}
 
+        {/* Loading State */}
         {status === DownloadStatus.ANALYZING && (
-          <div className="flex flex-col items-center justify-center py-24 space-y-8">
-            <div className="relative">
-              <div className="w-28 h-28 border-[6px] border-blue-500/5 border-t-blue-500 rounded-full animate-spin"></div>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <Activity className="w-12 h-12 text-blue-500 animate-pulse" />
-              </div>
-            </div>
-            <div className="text-center space-y-2">
-              <p className="text-blue-400 font-black tracking-[0.5em] text-sm uppercase">Probing Origin...</p>
-              <p className="text-slate-600 text-[10px] font-black uppercase tracking-widest">establishing v12 protocol handshake</p>
-            </div>
+          <div className="flex flex-col items-center justify-center py-6 gap-2">
+            <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+            <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Searching Media...</p>
           </div>
         )}
 
+        {/* Results Section */}
         {metadata && (status === DownloadStatus.READY || status === DownloadStatus.DOWNLOADING || status === DownloadStatus.COMPLETED) && (
-          <div className="space-y-10 animate-in fade-in slide-in-from-bottom-12 duration-1000">
-            <div className="bg-slate-900/90 border border-white/5 rounded-[3.5rem] overflow-hidden flex flex-col md:flex-row shadow-2xl relative group ring-1 ring-white/10">
-              <div className="w-full md:w-72 aspect-video md:aspect-square bg-slate-800 shrink-0 relative overflow-hidden">
+          <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
+            {/* Metadata Card */}
+            <div className="bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden flex flex-col sm:flex-row shadow-md">
+              <div className="w-full sm:w-32 aspect-video sm:aspect-square bg-slate-800 shrink-0">
                 <img 
                   src={metadata.thumbnail} 
                   alt={metadata.title} 
-                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" 
+                  className="w-full h-full object-cover" 
                   onError={(e) => {
                     const target = e.target as HTMLImageElement;
-                    if (target.src.includes('maxresdefault')) {
-                      target.src = target.src.replace('maxresdefault', 'hqdefault');
-                    }
+                    if (target.src.includes('maxresdefault')) target.src = target.src.replace('maxresdefault', 'hqdefault');
                   }}
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950 to-transparent"></div>
-                <div className="absolute top-5 left-5">
-                   <div className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl">
-                    <Globe className="w-3 h-3 animate-spin-slow" />
-                    <span>Live Tunnel</span>
-                  </div>
-                </div>
               </div>
-              <div className="p-10 flex flex-col justify-center flex-1">
-                <div className="mb-6">
-                  <h2 className="text-3xl font-black text-white leading-[1.1] mb-4 tracking-tight line-clamp-2 italic">
-                    {metadata.title}
-                  </h2>
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 bg-blue-500/10 rounded-2xl flex items-center justify-center border border-blue-500/20">
-                      <Zap className="w-6 h-6 text-blue-500" />
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Platform Creator</p>
-                      <p className="text-blue-400 text-2xl font-black leading-none mt-1">{metadata.author}</p>
-                    </div>
-                  </div>
+              <div className="p-4 flex flex-col justify-center flex-1 min-w-0">
+                <h2 className="text-sm font-bold text-white mb-0.5 truncate">{metadata.title}</h2>
+                <p className="text-xs text-blue-400 font-semibold mb-2">{metadata.author}</p>
+                <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
+                  <Server className="w-3 h-3" />
+                  <span>Node: {currentHost}</span>
                 </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            {/* Options Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {DOWNLOAD_OPTIONS.map((option) => (
                 <button 
                   key={option.id}
                   disabled={status === DownloadStatus.DOWNLOADING}
                   onClick={() => startDownload(option)}
                   className={`
-                    p-8 rounded-[2.8rem] border transition-all flex items-center justify-between group relative overflow-hidden
-                    ${activeDownloadId === option.id ? 'bg-blue-600/20 border-blue-500 shadow-2xl shadow-blue-500/20' : 'bg-slate-900/60 border-slate-800 hover:border-slate-400 hover:bg-slate-800'}
-                    ${status === DownloadStatus.DOWNLOADING && activeDownloadId !== option.id ? 'opacity-30 grayscale pointer-events-none' : ''}
+                    p-3 rounded-lg border flex items-center justify-between group transition-all
+                    ${activeDownloadId === option.id ? 'bg-blue-600/10 border-blue-500' : 'bg-slate-900/40 border-slate-800 hover:border-slate-700'}
+                    ${status === DownloadStatus.DOWNLOADING && activeDownloadId !== option.id ? 'opacity-40 grayscale' : ''}
                   `}
                 >
-                  <div className="flex items-center gap-5 relative z-10">
-                    <div className={`p-5 rounded-2xl ${option.format === 'MP4' ? 'bg-indigo-500/10 text-indigo-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
-                      {option.format === 'MP4' ? <Video className="w-7 h-7" /> : <Music className="w-7 h-7" />}
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-md ${option.format === 'MP4' ? 'bg-blue-500/10 text-blue-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
+                      {option.format === 'MP4' ? <Video className="w-4 h-4" /> : <Music className="w-4 h-4" />}
                     </div>
                     <div className="text-left">
-                      <h4 className="font-black text-2xl text-slate-100 italic">{option.quality}</h4>
-                      <p className="text-[11px] text-slate-500 font-black uppercase tracking-[0.2em]">{option.format} • High Bitrate Stream</p>
+                      <p className="text-xs font-bold text-slate-200">{option.quality}</p>
+                      <p className="text-[9px] text-slate-500 font-bold uppercase tracking-tight">{option.format}</p>
                     </div>
                   </div>
                   
-                  <div className="relative z-10">
-                    {activeDownloadId === option.id ? (
-                      <div className="flex items-center gap-3">
-                        <span className="text-lg font-black text-blue-400">{progress}%</span>
-                        <RefreshCw className="w-6 h-6 text-blue-500 animate-spin" />
-                      </div>
-                    ) : (
-                      <Download className="w-7 h-7 text-slate-800 group-hover:text-blue-500 transition-all group-hover:translate-y-2 duration-300" />
-                    )}
-                  </div>
-
-                  {activeDownloadId === option.id && (
-                    <div className="absolute bottom-0 left-0 h-2 bg-blue-500 transition-all duration-300 shadow-[0_0_20px_rgba(59,130,246,1)]" style={{ width: `${progress}%` }}></div>
-                  )}
-                  
-                  {isProxying && activeDownloadId === option.id && (
-                    <div className="absolute top-4 right-4 animate-in fade-in duration-500">
-                      <div className="flex items-center gap-2 px-3 py-1 bg-amber-500/20 border border-amber-500/30 rounded-lg">
-                        <Lock className="w-3 h-3 text-amber-500" />
-                        <span className="text-[8px] font-black uppercase tracking-widest text-amber-500">Proxy Active</span>
-                      </div>
+                  {activeDownloadId === option.id ? (
+                    <div className="flex items-center gap-1.5 text-blue-400 text-xs font-bold">
+                      {progress}% <Loader2 className="w-3.5 h-3.5 animate-spin" />
                     </div>
+                  ) : (
+                    <Download className="w-4 h-4 text-slate-700 group-hover:text-blue-500 transition-colors" />
                   )}
                 </button>
               ))}
             </div>
-          </div>
-        )}
 
-        {status === DownloadStatus.COMPLETED && (
-          <div className="fixed bottom-16 left-1/2 -translate-x-1/2 flex items-center gap-5 bg-blue-600 text-white px-12 py-7 rounded-[3rem] shadow-2xl animate-in slide-in-from-bottom-16 duration-700 z-50">
-            <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center animate-bounce">
-              <FileDown className="w-6 h-6" />
-            </div>
-            <div>
-              <span className="font-black text-xl tracking-tighter uppercase italic block leading-none">Tunnel Secured</span>
-              <span className="text-[10px] font-bold opacity-80 uppercase tracking-widest">Content transferred to device cache</span>
+            <div className="bg-slate-900/40 p-3 rounded-lg border border-slate-800 text-[10px] text-slate-500 leading-relaxed italic">
+              * Note: Larger files (1080p) may take a few seconds to process. Please don't close this window until the download starts.
             </div>
           </div>
         )}
       </main>
 
-      <footer className="mt-auto py-16 text-center opacity-30 w-full max-w-2xl border-t border-white/5">
-        <p className="text-[11px] font-black uppercase tracking-[0.8em] text-slate-500 mb-3">AnyStream Universal X-VII</p>
-        <p className="text-[9px] font-bold text-slate-600 px-12 leading-relaxed italic">Smart-Tunnel Protocol • v12 Multi-Mirror Handshake • Zero-Trace Proxy.</p>
+      <footer className="mt-auto py-8 text-center border-t border-slate-800/50 w-full max-w-xl">
+        <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">AnyStream • Secure & Global</p>
       </footer>
+
+      {/* Success Notification */}
+      {status === DownloadStatus.COMPLETED && (
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-6 py-2.5 rounded-full shadow-xl flex items-center gap-2 animate-in slide-in-from-bottom-5 z-50">
+          <CheckCircle className="w-4 h-4" />
+          <span className="text-xs font-bold">Starting Download...</span>
+        </div>
+      )}
     </div>
   );
 };
